@@ -1,0 +1,56 @@
+module debouncer (
+    // Driven by the DE2 board's 50 MHz crystal oscillator.
+    input wire clk,
+    
+    // The raw, asynchronous mechanical signal from the physical push-button.
+    // Prone to high-frequency voltage spikes (contact bounce) when pressed.
+    input wire button_in,
+    
+    // The clean, stabilized signal safely passed to the DMA controller's FSM.
+    output reg button_out
+);
+
+    // 20-bit counter used to measure continuous signal stability over time.
+    reg [19:0] count;
+    
+    // Two-stage flip-flop synchronizer.
+    // Crucial for preventing metastability when an asynchronous human button press 
+    // violates the setup/hold time of the 50MHz synchronous clock domain.
+    reg sync_0, sync_1;
+    
+    // Power-on Initialization. 
+    // During FPGA synthesis, Quartus embeds these values directly into the SRAM bitstream.
+    // This guarantees the registers wake up at exactly 0 upon receiving physical power, 
+    // ensuring deterministic simulation and preventing undefined 'x' logic states.
+    initial begin
+        count = 20'd0;
+        button_out = 1'b0;
+    end
+
+    always @(posedge clk) begin
+        // Stage 1 & 2: Cross the raw physical signal safely into the system clock domain.
+        sync_0 <= button_in;
+        sync_1 <= sync_0;
+
+        // Reset the stability counter immediately if the synchronized input 
+        // matches our current established output (meaning no state change is occurring).
+        if (sync_1 == button_out) begin
+            count <= 0;
+        end else begin
+            // If a state change is detected (button pressed or released), begin counting.
+            // Any mechanical bounce will reset the counter to 0 before it reaches the threshold.
+            count <= count + 1; 
+            
+            // THRESHOLD CHECK
+            // Note for physical deployment: 20'h0000F is the accelerated simulation threshold.
+            // For the physical Altera DE2 board, this must be changed to 20'hFFFFF 
+            // to achieve the true ~20 millisecond (1,048,575 cycle) mechanical filter delay.
+            if (count == 20'h0000F) begin
+                // The signal has remained stable for the entire threshold duration.
+                // It is now safe to register this as a legitimate, clean button press.
+                button_out <= sync_1; 
+                count <= 0;
+            end
+        end
+    end
+endmodule
