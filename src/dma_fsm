@@ -1,0 +1,87 @@
+module dma_fsm (
+    // The master clock driving the synchronous state transitions.
+    input wire clk,
+    
+    // Synchronous active-high reset to force the FSM back to a known safe state.
+    input wire reset,
+    
+    // The clean, debounced trigger signal to initiate a DMA transfer.
+    input wire start_button,
+    
+    // Control signal sent to the M4K memory. High = Write, Low = Read.
+    output reg write_enable, 
+    
+    // Exports the internal state counter as a dynamic address offset.
+    // This decouples the timing logic (FSM) from the physical address routing (Address Generator).
+    output wire [7:0] offset_out 
+);
+    // State encodings defined as local parameters for readability and synthesis optimization.
+    localparam IDLE  = 2'b00;
+    localparam WRITE = 2'b01;
+    localparam READ  = 2'b10;
+    localparam DONE  = 2'b11;
+
+    reg [1:0] state; 
+    
+    // 5-bit counter used to track the 16-cycle burst duration (0 to 15).
+    reg [4:0] burst_count; 
+
+    // Hardware Concatenation: Pads the 4-bit active counter with four leading zeros.
+    // This physically wires the small internal counter to the 8-bit memory address bus
+    // without synthesizing unnecessary flip-flops for the unused upper bits.
+    assign offset_out = {4'b0000, burst_count[3:0]};
+
+    always @(posedge clk) begin
+        if (reset) begin
+            state <= IDLE;
+            write_enable <= 0;
+            burst_count <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    // System rests here. Memory is protected (write_enable = 0).
+                    write_enable <= 0;
+                    burst_count <= 0;
+                    if (start_button) state <= WRITE;
+                end
+                
+                WRITE: begin
+                    // Drive the M4K write enable line high.
+                    write_enable <= 1; 
+                    
+                    // Execute a 16-word burst write (cycles 0 through 15).
+                    if (burst_count == 5'd15) begin
+                        state <= READ; 
+                        
+                        // CRITICAL ARCHITECTURE: Reset the counter back to 0 exactly as we shift to READ.
+                        // This ensures the read phase starts at the exact same base address, 
+                        // proving the data was successfully stored in the hardware.
+                        burst_count <= 0; 
+                    end else begin
+                        burst_count <= burst_count + 5'd1;
+                    end
+                end
+                
+                READ: begin
+                    // Deassert write_enable so the M4K RAM pushes the stored values to the read port.
+                    write_enable <= 0; 
+                    
+                    // Execute a 16-word burst read, matching the write cycle duration.
+                    if (burst_count == 5'd15) begin
+                        state <= DONE;
+                    end else begin
+                        burst_count <= burst_count + 5'd1;
+                    end
+                end
+                
+                DONE: begin
+                    // 1-cycle buffer state to safely deassert all control lines 
+                    // and ensure memory ports close cleanly before returning to IDLE.
+                    write_enable <= 0;
+                    burst_count <= 0;
+                    state <= IDLE; 
+                end
+            endcase
+        end
+    end
+endmodule
