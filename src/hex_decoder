@@ -1,0 +1,43 @@
+module hex_decoder (
+    // Takes in a 4-bit binary nibble (representing values 0 through 15 / Hex 0 through F)
+    // from the M4K memory's data_out register.
+    input wire [3:0] hex_in,
+    
+    // Outputs a 7-bit mask directly wired to the physical LED segments on the board.
+    output reg [6:0] seg_out
+);
+    // Pure combinational logic block. 
+    // The @(*) sensitivity list tells the compiler to instantly evaluate this block 
+    // anytime the hex_in value changes, meaning this module has zero clock-cycle latency.
+    always @(*) begin
+        // ALGORITHM: Active-Low Look-Up Table (LUT)
+        // The Altera DE2 7-segment displays use a common-anode configuration (Active-Low).
+        // This means driving a pin with a logic '0' turns the LED segment ON, 
+        // and driving it with a logic '1' turns the segment OFF.
+        
+        // Bit mapping order: {g, f, e, d, c, b, a}
+        case (hex_in)
+            4'h0: seg_out = 7'b1000000; // '0' (Only center segment 'g' is OFF)
+            4'h1: seg_out = 7'b1111001; // '1' (Segments 'b' and 'c' are ON)
+            4'h2: seg_out = 7'b0100100; // '2'
+            4'h3: seg_out = 7'b0110000; // '3'
+            4'h4: seg_out = 7'b0011001; // '4'
+            4'h5: seg_out = 7'b0010010; // '5'
+            4'h6: seg_out = 7'b0000010; // '6'
+            4'h7: seg_out = 7'b1111000; // '7'
+            4'h8: seg_out = 7'b0000000; // '8' (All segments ON)
+            4'h9: seg_out = 7'b0011000; // '9'
+            4'hA: seg_out = 7'b0001000; // 'A'
+            4'hB: seg_out = 7'b0000011; // 'b'
+            4'hC: seg_out = 7'b1000110; // 'C'
+            4'hD: seg_out = 7'b0100001; // 'd'
+            4'hE: seg_out = 7'b0000110; // 'E'
+            4'hF: seg_out = 7'b0001110; // 'F'
+            
+            // Safety Default: If an unknown state ('x' or 'z') reaches this module, 
+            // turn all LEDs OFF (1111111). This explicitly prevents Quartus from 
+            // inferring unwanted memory latches during hardware synthesis.
+            default: seg_out = 7'b1111111; 
+        endcase
+    end
+endmodule
