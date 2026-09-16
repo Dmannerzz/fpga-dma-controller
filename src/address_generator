@@ -1,0 +1,20 @@
+module address_generator (
+    // The base address is statically set by the user via the left-most DE2 toggle switches (SW[15:8]). 
+    // This allows the transfer destination to be changed on the fly without reprogramming the FPGA.
+    input wire [7:0] base,
+    
+    // The offset is dynamically driven by the FSM's internal burst counter.
+    // It tracks the physical progression of the current DMA transfer cycle (0 to 15).
+    input wire [7:0] offset,
+    
+    // The calculated absolute memory location routed directly to the M4K RAM block.
+    output wire [7:0] final_address
+);
+
+    // Pure combinational hardware adder.
+    // By using continuous assignment (assign) rather than a clocked register, 
+    // the physical silicon calculates the new address instantly as soon as the FSM updates the offset.
+    // This decoupled architecture ensures zero clock-cycle latency for address generation.
+    assign final_address = base + offset;
+    
+endmodule
