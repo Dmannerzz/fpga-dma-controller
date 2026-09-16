@@ -1,0 +1,38 @@
+module dma_memory (
+    // System clock to ensure all memory access is completely synchronous to the FSM.
+    input wire clk,
+    
+    // Control signal driven by the FSM. 
+    // High = Write data into SRAM cells. Low = Read data from SRAM cells.
+    input wire write_enable,
+    
+    // The 8-bit absolute address generated dynamically by the Base + Offset logic.
+    input wire [7:0] address,
+    
+    // The raw payload data coming directly from the right-side DE2 toggle switches (SW[7:0]).
+    input wire [7:0] data_in,
+    
+    // The retrieved data pushed out to the hex decoders.
+    output reg [7:0] data_out
+);
+
+    // Memory array instantiation: 256 individual storage slots, each 8 bits wide (256 Bytes total).
+    // CRITICAL ARCHITECTURE: Because this array is accessed purely synchronously (inside the posedge block), 
+    // the Quartus compiler will NOT waste standard Logic Elements (flip-flops) to build it. 
+    // Instead, it automatically infers and routes this directly into the Cyclone II's dedicated, high-speed M4K SRAM blocks.
+    reg [7:0] memory_array [0:255];
+
+    always @(posedge clk) begin
+        // Synchronous Write Phase
+        if (write_enable) begin
+            memory_array[address] <= data_in;
+        end
+        
+        // Synchronous Read Phase
+        // Data is continuously fetched to the output register on every clock edge.
+        // This specific non-blocking assignment architecture inherently creates a 1-clock-cycle read latency.
+        // This is why there is a 1-cycle gap in ModelSim between the FSM entering the READ state 
+        // and the physical data appearing on the 7-segment displays.
+        data_out <= memory_array[address]; 
+    end
+endmodule
